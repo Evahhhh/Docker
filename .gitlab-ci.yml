@@ -1,0 +1,24 @@
+stages:
+  - setup
+  - deploy
+
+install_ansible:
+  stage: setup
+  image: alpine/ansible
+  before_script:
+    - apt-get update && apt-get install -y ansible
+  script:
+    - echo "Ansible installé avec succès"
+  only:
+    - master
+
+deploy_server:
+  stage: deploy
+  image: alpine/ansible
+  before_script:
+    - apt-get update && apt-get install -y ansible
+  script:
+    - echo "Déploiement du serveur et des projets avec Ansible..."
+    - ansible-playbook -i inventory/hosts.ini playbooks/site.yml -e "ansible_ssh_pass=$SSH_PASSWORD"
+  only:
+    - master

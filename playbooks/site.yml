@@ -1,0 +1,5 @@
+- hosts: all
+  become: true
+  roles:
+    - "{{ playbook_dir }}/../roles/traefik"
+    - "{{ playbook_dir }}/../roles/project_manager"

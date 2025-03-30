@@ -1,0 +1,31 @@
+- name: Créer le répertoire site1
+  file:
+    path: /opt/site1
+    state: directory
+
+- name: Copier le docker-compose pour site1
+  copy:
+    src: "{{ playbook_dir }}/../projects/site1/docker-compose.yml"
+    dest: /opt/site1/docker-compose.yml
+  ignore_errors: no
+
+- name: Lancer site1 (WordPress)
+  shell: docker compose up -d || /usr/local/bin/docker-compose up -d
+  args:
+    chdir: /opt/site1
+
+- name: Créer le répertoire site2
+  file:
+    path: /opt/site2
+    state: directory
+
+- name: Copier le docker-compose pour site2
+  copy:
+    src: "{{ playbook_dir }}/../projects/site2/docker-compose.yml"
+    dest: /opt/site2/docker-compose.yml
+  ignore_errors: no
+
+- name: Lancer site2 (Projet PHP)
+  shell: docker compose up -d || /usr/local/bin/docker-compose up -d
+  args:
+    chdir: /opt/site2

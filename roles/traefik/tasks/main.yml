@@ -1,0 +1,146 @@
+---
+# Installation de Docker pour Debian
+- name: Installer les dépendances nécessaires
+  apt:
+    name:
+      - apt-transport-https
+      - ca-certificates
+      - curl
+      - gnupg
+      - lsb-release
+    state: present
+    update_cache: yes
+
+- name: Ajouter la clé GPG Docker
+  apt_key:
+    url: https://download.docker.com/linux/debian/gpg
+    state: present
+
+- name: Déterminer l'OS pour le dépôt Docker
+  shell: if [ -f /etc/os-release ] && grep -q 'ID=debian' /etc/os-release; then echo "debian"; else echo "ubuntu"; fi
+  register: os_name
+  changed_when: false
+
+- name: Ajouter le dépôt Docker pour Debian
+  apt_repository:
+    repo: "deb [arch=amd64] https://download.docker.com/linux/debian {{ ansible_distribution_release }} stable"
+    state: present
+  when: os_name.stdout == "debian"
+
+- name: Ajouter le dépôt Docker pour Ubuntu
+  apt_repository:
+    repo: "deb [arch=amd64] https://download.docker.com/linux/ubuntu {{ ansible_distribution_release }} stable"
+    state: present
+  when: os_name.stdout == "ubuntu"
+
+- name: Installer Docker Engine
+  apt:
+    name:
+      - docker-ce
+      - docker-ce-cli
+      - containerd.io
+    state: present
+    update_cache: yes
+
+# Installation alternative de Docker pour les systèmes où les packages ne fonctionnent pas
+- name: Vérifier si Docker est installé
+  command: which docker
+  register: docker_installed
+  ignore_errors: yes
+  changed_when: false
+
+- name: Installer Docker avec le script de commodité si l'installation par apt échoue
+  shell: curl -fsSL https://get.docker.com -o get-docker.sh && sh get-docker.sh
+  when: docker_installed is failed
+  ignore_errors: yes
+
+- name: Installer Docker Compose
+  shell: curl -L "https://github.com/docker/compose/releases/download/v2.24.6/docker-compose-$(uname -s)-$(uname -m)" -o /usr/local/bin/docker-compose
+  args:
+    creates: /usr/local/bin/docker-compose
+  ignore_errors: yes
+
+- name: Rendre Docker Compose exécutable
+  file:
+    path: /usr/local/bin/docker-compose
+    mode: '0755'
+  ignore_errors: yes
+
+- name: Créer un lien symbolique pour docker-compose
+  file:
+    src: /usr/local/bin/docker-compose
+    dest: /usr/bin/docker-compose
+    state: link
+  ignore_errors: yes
+
+- name: Démarrer et activer Docker
+  systemd:
+    name: docker
+    state: started
+    enabled: yes
+  ignore_errors: yes
+
+# Tâches Traefik originales
+- name: Créer le répertoire Traefik
+  file:
+    path: /opt/traefik
+    state: directory
+
+- name: Créer le fichier acme.json avec les permissions appropriées
+  file:
+    path: /opt/traefik/acme.json
+    state: touch
+    mode: "0600"
+
+- name: Créer le fichier docker-compose de Traefik
+  copy:
+    dest: /opt/traefik/docker-compose.yml
+    content: |
+      version: '3.3'
+      services:
+        traefik:
+          image: traefik:v2.10
+          container_name: traefik
+          command:
+            - "--api.insecure=true"
+            - "--providers.docker"
+            - "--entrypoints.web.address=:80"
+            - "--entrypoints.websecure.address=:443"
+            - "--certificatesresolvers.myresolver.acme.httpchallenge=true"
+            - "--certificatesresolvers.myresolver.acme.httpchallenge.entrypoint=web"
+            - "--certificatesresolvers.myresolver.acme.email=example@example.com"
+            - "--certificatesresolvers.myresolver.acme.storage=acme.json"
+          ports:
+            - "80:80"
+            - "443:443"
+            - "8080:8080"
+          volumes:
+            - /var/run/docker.sock:/var/run/docker.sock
+            - ./acme.json:/acme.json
+
+- name: Vérifier la commande Docker Compose disponible
+  shell: which docker-compose || which docker
+  register: docker_compose_cmd
+  changed_when: false
+  ignore_errors: yes
+
+- name: Lancer Traefik avec docker compose (nouvelle syntaxe)
+  shell: docker compose up -d
+  args:
+    chdir: /opt/traefik
+  when: "'docker' in docker_compose_cmd.stdout and docker_compose_cmd.rc == 0"
+  ignore_errors: yes
+
+- name: Lancer Traefik avec docker-compose (ancienne syntaxe)
+  shell: docker-compose up -d
+  args:
+    chdir: /opt/traefik
+  when: "'docker-compose' in docker_compose_cmd.stdout and docker_compose_cmd.rc == 0"
+  ignore_errors: yes
+
+- name: Lancer Traefik avec installation alternative
+  shell: curl -L https://github.com/docker/compose/releases/download/v2.24.6/docker-compose-`uname -s`-`uname -m` -o /usr/local/bin/docker-compose && chmod +x /usr/local/bin/docker-compose && /usr/local/bin/docker-compose up -d
+  args:
+    chdir: /opt/traefik
+  when: docker_compose_cmd.rc != 0
+  ignore_errors: yes
